@@ -1,5 +1,5 @@
 #!/bin/bash
-# Domain join script for Linux (Ubuntu/CentOS/XCP-ng) with test mode
+# Domain join script for Linux (Ubuntu/Debian/CentOS/XCP-ng) with test mode
 
 # === CONFIGURATION ===
 DOMAIN="corp.rstnusa.com"
@@ -37,7 +37,7 @@ OS_FAMILY=""
 if [ -f /etc/os-release ]; then
     . /etc/os-release
     case "$ID" in
-        ubuntu)
+        ubuntu|debian)
             OS_FAMILY="ubuntu"
             INSTALL_CMD="apt-get install -y"
             ;;
