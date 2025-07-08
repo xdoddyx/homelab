@@ -44,8 +44,7 @@ if [ -f /etc/os-release ]; then
         almalinux|centos|rhel|xenenterprise)
             OS_FAMILY="rhel"
             INSTALL_CMD="yum install -y"
-
-            # === SET SELinux to permissive ===
+            # Set SELinux to permissive
             echo "Setting SELinux to permissive..."
             run_or_echo "setenforce 0"
             run_or_echo "sed -i 's/^SELINUX=.*/SELINUX=permissive/' /etc/selinux/config"
@@ -60,9 +59,12 @@ else
     exit 1
 fi
 
-# === NETWORK CHECK ===
+# === NETWORK CONNECTIVITY CHECK ===
 echo "Checking network connectivity..."
-ping -c 2 8.8.8.8 >/dev/null || { echo "No network. Exiting."; exit 1; }
+if ! ping -c 2 8.8.8.8 >/dev/null 2>&1; then
+    echo "No network. Exiting."
+    exit 1
+fi
 echo "Network OK."
 
 # === SET PERSISTENT DNS ===
@@ -70,26 +72,30 @@ echo "Setting persistent DNS..."
 run_or_echo "echo -e 'nameserver $FALLBACK_DNS1\nnameserver $FALLBACK_DNS2' > /etc/resolv.conf"
 if [ "$OS_FAMILY" = "rhel" ]; then
     for conf in /etc/sysconfig/network-scripts/ifcfg-*; do
-        grep -q "^DNS1" "$conf" || echo "DNS1=$FALLBACK_DNS1" >> "$conf"
-        grep -q "^DNS2" "$conf" || echo "DNS2=$FALLBACK_DNS2" >> "$conf"
-        grep -q "^PEERDNS" "$conf" || echo "PEERDNS=no" >> "$conf"
+        grep -q "^DNS1" "$conf"   || echo "DNS1=$FALLBACK_DNS1" >> "$conf"
+        grep -q "^DNS2" "$conf"   || echo "DNS2=$FALLBACK_DNS2" >> "$conf"
+        grep -q "^PEERDNS" "$conf"|| echo "PEERDNS=no"    >> "$conf"
     done
-fi
-
-# === ENSURE DNS UTILITIES INSTALLED ===
-if ! command -v host >/dev/null 2>&1; then
-    echo "host command not found; installing DNS utilities..."
-    if [ "$OS_FAMILY" = "ubuntu" ]; then
-        run_or_echo "\$INSTALL_CMD dnsutils"
-    else
-        run_or_echo "\$INSTALL_CMD bind-utils"
-    fi
 fi
 
 # === DNS RESOLUTION CHECK WITH RETRIES ===
 echo "Checking DNS for $DOMAIN with $RETRY retries..."
+# Ensure 'host' command is available
+if ! command -v host >/dev/null 2>&1; then
+    echo "'host' command not found; installing package..."
+    if [ "$OS_FAMILY" = "ubuntu" ]; then
+        run_or_echo "apt-get update"
+        run_or_echo "apt-get install -y dnsutils"
+    else
+        run_or_echo "yum install -y bind-utils"
+    fi
+fi
+
 for i in $(seq 1 $RETRY); do
-    host "$DOMAIN" && break
+    if host "$DOMAIN" >/dev/null 2>&1; then
+        echo "DNS resolution OK."
+        break
+    fi
     echo "Retrying DNS resolution ($i/$RETRY)..."
     sleep 2
     if [ $i -eq $RETRY ]; then
@@ -97,7 +103,6 @@ for i in $(seq 1 $RETRY); do
         exit 1
     fi
 done
-echo "DNS resolution OK."
 
 # === SET HOSTNAME ===
 HOSTNAME_BASE=$(hostname -s)
@@ -109,10 +114,10 @@ run_or_echo "hostnamectl set-hostname $NEW_HOSTNAME"
 echo "Installing required packages..."
 if [ "$OS_FAMILY" = "ubuntu" ]; then
     run_or_echo "apt-get update"
-    run_or_echo "\$INSTALL_CMD realmd sssd sssd-tools oddjob oddjob-mkhomedir adcli samba-common krb5-user packagekit"
+    run_or_echo "$INSTALL_CMD realmd sssd sssd-tools oddjob oddjob-mkhomedir adcli samba-common krb5-user packagekit dnsutils"
 else
-    run_or_echo "\$INSTALL_CMD epel-release"
-    run_or_echo "\$INSTALL_CMD realmd sssd sssd-tools oddjob oddjob-mkhomedir adcli samba-common samba-common-tools krb5-workstation bind-utils"
+    run_or_echo "$INSTALL_CMD epel-release"
+    run_or_echo "$INSTALL_CMD realmd sssd sssd-tools oddjob oddjob-mkhomedir adcli samba-common samba-common-tools krb5-workstation bind-utils"
 fi
 
 # === ENABLE ODDJOBD ===
@@ -127,7 +132,10 @@ if [ "$TEST_MODE" == "true" ]; then
 else
     echo "Enter password for $AD_USER:"
     realm join --user="$AD_USER" "$REALM"
-    [ $? -ne 0 ] && { echo "Domain join failed."; exit 1; }
+    if [ $? -ne 0 ]; then
+        echo "Domain join failed."
+        exit 1
+    fi
 fi
 
 # === CONFIGURE SSSD ===
@@ -136,14 +144,17 @@ echo "Configuring SSSD: $SSSD_CONF"
 if [ -f "$SSSD_CONF" ]; then
     run_or_echo "chmod 600 $SSSD_CONF"
 
+    # use_fully_qualified_names
     run_or_echo "grep -q '^use_fully_qualified_names' $SSSD_CONF && \
         sed -i 's/^use_fully_qualified_names.*/use_fully_qualified_names = $USE_FQN/' $SSSD_CONF || \
         sed -i '/^\[sssd\]/a use_fully_qualified_names = $USE_FQN' $SSSD_CONF"
 
+    # pam_mkhomedir
     run_or_echo "grep -q '^pam_mkhomedir' $SSSD_CONF && \
         sed -i 's/^pam_mkhomedir.*/pam_mkhomedir = yes/' $SSSD_CONF || \
         sed -i '/^\[pam\]/a pam_mkhomedir = yes' $SSSD_CONF"
 
+    # Validate config and restart
     run_or_echo "sssctl config-check --config-file $SSSD_CONF"
     run_or_echo "systemctl restart sssd"
 else
