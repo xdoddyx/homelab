@@ -1,5 +1,5 @@
 #!/bin/bash
-# Domain join script for Linux (Ubuntu/Debian/CentOS/XCP-ng) with test mode
+# Domain join script for Linux (Ubuntu/Debian/Fedora/CentOS/XCP-ng) with test mode
 
 # === CONFIGURATION ===
 DOMAIN="corp.rstnusa.com"
@@ -41,10 +41,13 @@ if [ -f /etc/os-release ]; then
             OS_FAMILY="ubuntu"
             INSTALL_CMD="apt-get install -y"
             ;;
-        almalinux|centos|rhel|xenenterprise)
+        almalinux|centos|rhel|xenenterprise|fedora)
             OS_FAMILY="rhel"
-            INSTALL_CMD="yum install -y"
-            # Set SELinux to permissive
+            if [ "$ID" = "fedora" ]; then
+                INSTALL_CMD="dnf install -y"
+            else
+                INSTALL_CMD="yum install -y"
+            fi
             echo "Setting SELinux to permissive..."
             run_or_echo "setenforce 0"
             run_or_echo "sed -i 's/^SELINUX=.*/SELINUX=permissive/' /etc/selinux/config"
@@ -87,7 +90,7 @@ if ! command -v host >/dev/null 2>&1; then
         run_or_echo "apt-get update"
         run_or_echo "apt-get install -y dnsutils"
     else
-        run_or_echo "yum install -y bind-utils"
+        run_or_echo "$INSTALL_CMD bind-utils"
     fi
 fi
 
@@ -115,6 +118,8 @@ echo "Installing required packages..."
 if [ "$OS_FAMILY" = "ubuntu" ]; then
     run_or_echo "apt-get update"
     run_or_echo "$INSTALL_CMD realmd sssd sssd-tools oddjob oddjob-mkhomedir adcli samba-common krb5-user packagekit dnsutils"
+elif [ "$ID" = "fedora" ]; then
+    run_or_echo "$INSTALL_CMD realmd sssd sssd-tools oddjob oddjob-mkhomedir adcli samba-common samba-common-tools krb5-workstation bind-utils"
 else
     run_or_echo "$INSTALL_CMD epel-release"
     run_or_echo "$INSTALL_CMD realmd sssd sssd-tools oddjob oddjob-mkhomedir adcli samba-common samba-common-tools krb5-workstation bind-utils"
