@@ -76,6 +76,16 @@ if [ "$OS_FAMILY" = "rhel" ]; then
     done
 fi
 
+# === ENSURE DNS UTILITIES INSTALLED ===
+if ! command -v host >/dev/null 2>&1; then
+    echo "host command not found; installing DNS utilities..."
+    if [ "$OS_FAMILY" = "ubuntu" ]; then
+        run_or_echo "\$INSTALL_CMD dnsutils"
+    else
+        run_or_echo "\$INSTALL_CMD bind-utils"
+    fi
+fi
+
 # === DNS RESOLUTION CHECK WITH RETRIES ===
 echo "Checking DNS for $DOMAIN with $RETRY retries..."
 for i in $(seq 1 $RETRY); do
@@ -99,10 +109,10 @@ run_or_echo "hostnamectl set-hostname $NEW_HOSTNAME"
 echo "Installing required packages..."
 if [ "$OS_FAMILY" = "ubuntu" ]; then
     run_or_echo "apt-get update"
-    run_or_echo "$INSTALL_CMD realmd sssd sssd-tools oddjob oddjob-mkhomedir adcli samba-common krb5-user packagekit"
+    run_or_echo "\$INSTALL_CMD realmd sssd sssd-tools oddjob oddjob-mkhomedir adcli samba-common krb5-user packagekit"
 else
-    run_or_echo "$INSTALL_CMD epel-release"
-    run_or_echo "$INSTALL_CMD realmd sssd oddjob oddjob-mkhomedir adcli samba-common samba-common-tools krb5-workstation bind-utils"
+    run_or_echo "\$INSTALL_CMD epel-release"
+    run_or_echo "\$INSTALL_CMD realmd sssd sssd-tools oddjob oddjob-mkhomedir adcli samba-common samba-common-tools krb5-workstation bind-utils"
 fi
 
 # === ENABLE ODDJOBD ===
@@ -134,7 +144,8 @@ if [ -f "$SSSD_CONF" ]; then
         sed -i 's/^pam_mkhomedir.*/pam_mkhomedir = yes/' $SSSD_CONF || \
         sed -i '/^\[pam\]/a pam_mkhomedir = yes' $SSSD_CONF"
 
-    run_or_echo "sssd --config-check"
+    # use sssctl for config validation
+    run_or_echo "sssctl config-check --config-file $SSSD_CONF"
     run_or_echo "systemctl restart sssd"
 else
     echo "$SSSD_CONF not found!"
