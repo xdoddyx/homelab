@@ -144,7 +144,6 @@ if [ -f "$SSSD_CONF" ]; then
         sed -i 's/^pam_mkhomedir.*/pam_mkhomedir = yes/' $SSSD_CONF || \
         sed -i '/^\[pam\]/a pam_mkhomedir = yes' $SSSD_CONF"
 
-    # use sssctl for config validation
     run_or_echo "sssctl config-check --config-file $SSSD_CONF"
     run_or_echo "systemctl restart sssd"
 else
