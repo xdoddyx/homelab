@@ -7,33 +7,34 @@
 
 set -euo pipefail
 
-# must run as root
+# Must run as root
 if [[ $EUID -ne 0 ]]; then
   echo "❗ This script must be run as root. Try: sudo $0"
   exit 1
 fi
 
-# load OS info
+# Load OS info
 . /etc/os-release
 
 OS_ID="$ID"
 OS_LIKE="$ID_LIKE"
 
-# common: detect which service to use and start it
+# Common function to enable and start the service
 enable_and_start() {
   local svc
-  if systemctl list-unit-files | grep -qw xe-daemon.service; then
-    svc=xe-daemon.service
-  elif systemctl list-unit-files | grep -qw xe-linux-distribution.service; then
+  # The service name can vary, so we check for the most common ones.
+  if systemctl list-unit-files | grep -qw xe-linux-distribution.service; then
     svc=xe-linux-distribution.service
+  elif systemctl list-unit-files | grep -qw xe-daemon.service; then
+    svc=xe-daemon.service
   else
-    echo "⚠️  Could not find xe-daemon.service or xe-linux-distribution.service. Please check the package."
+    echo "⚠️  Could not find the XCP-ng guest agent service. Please check the package installation."
     exit 2
   fi
 
   echo "Enabling & starting $svc …"
-  systemctl enable "$svc"
-  systemctl start  "$svc"
+  # Use 'enable --now' to perform both actions in one command.
+  systemctl enable --now "$svc"
   systemctl status "$svc" --no-pager
 }
 
@@ -50,24 +51,25 @@ install_fedora() {
   enable_and_start
 }
 
-# CORRECTED FUNCTION FOR ALMALINUX/RHEL
+# UPDATED FUNCTION FOR ALMALINUX/RHEL
 install_rhel() {
   echo "→ RHEL-based distro detected ($OS_ID). Installing XCP-ng repo and tools…"
 
-  # Install the XCP-ng repository which provides the guest utilities package
+  # 1. Install the XCP-ng repository. This is required to find the guest utilities.
   if command -v dnf &>/dev/null; then
     dnf install -y https://repo.xcp-ng.org/xcp-ng-release-latest.rpm
   else
     yum install -y https://repo.xcp-ng.org/xcp-ng-release-latest.rpm
   fi
 
-  # Install the latest guest utilities package
+  # 2. Install the latest guest utilities package from the newly added repo.
   if command -v dnf &>/dev/null; then
     dnf install -y xe-guest-utilities-latest
   else
     yum install -y xe-guest-utilities-latest
   fi
   
+  # 3. Enable and start the service.
   enable_and_start
 }
 
@@ -82,7 +84,7 @@ case "${OS_ID,,}" in
     install_rhel
     ;;
   *)
-    # fallback on ID_LIKE 
+    # Fallback on ID_LIKE 
     if [[ "${OS_LIKE,,}" =~ debian ]]; then
       install_debian
     elif [[ "${OS_LIKE,,}" =~ (rhel|fedora) ]]; then
