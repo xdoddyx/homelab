@@ -50,23 +50,24 @@ install_fedora() {
   enable_and_start
 }
 
+# CORRECTED FUNCTION FOR ALMALINUX/RHEL
 install_rhel() {
-  echo "→ RHEL-based distro detected ($OS_ID). Installing EPEL & xe-guest-utilities…"
-  # install EPEL if missing
-  if ! rpm -q epel-release &>/dev/null; then
-    if command -v dnf &>/dev/null; then
-      dnf install -y epel-release
-    else
-      yum install -y epel-release
-    fi
+  echo "→ RHEL-based distro detected ($OS_ID). Installing XCP-ng repo and tools…"
+
+  # Install the XCP-ng repository which provides the guest utilities package
+  if command -v dnf &>/dev/null; then
+    dnf install -y https://repo.xcp-ng.org/xcp-ng-release-latest.rpm
+  else
+    yum install -y https://repo.xcp-ng.org/xcp-ng-release-latest.rpm
   fi
 
-  # install the guest utils
+  # Install the latest guest utilities package
   if command -v dnf &>/dev/null; then
-    dnf install -y xe-guest-utilities
+    dnf install -y xe-guest-utilities-latest
   else
-    yum install -y xe-guest-utilities
+    yum install -y xe-guest-utilities-latest
   fi
+  
   enable_and_start
 }
 
